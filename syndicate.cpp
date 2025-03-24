@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <fstream>
+#include <algorithm>
 #include <sstream>
 #include <tensorflow/c/c_api.h>
 
