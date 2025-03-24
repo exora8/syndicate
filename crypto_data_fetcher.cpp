@@ -85,8 +85,9 @@ void save_historical_to_csv(const std::string& filename, const std::string& symb
         std::string line;
         std::istringstream data_stream(data);
         while (std::getline(data_stream, line)) {
-            size_t time_pos = line.find(""time":");
-            size_t price_pos = line.find(""close":");
+            size_t time_pos = line.find("\"time\":");
+            size_t price_pos = line.find("\"close\":");
+
             if (time_pos != std::string::npos && price_pos != std::string::npos) {
                 long timestamp = std::stol(line.substr(time_pos + 6, line.find(",", time_pos) - time_pos - 6));
                 double price = std::stod(line.substr(price_pos + 8, line.find(",", price_pos) - price_pos - 8));
