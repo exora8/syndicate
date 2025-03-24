@@ -1,42 +1,61 @@
 #include <iostream>
+#include <fstream>
 #include <vector>
-#include <tensorflow/c/c_api.h> // TensorFlow C API
+#include <curl/curl.h>
 
-// Function to fetch data (Mock, replace with API call)
-std::vector<float> fetch_crypto_data() {
-    return {42000, 42100, 41950, 42200, 42350, 42400, 42300, 42500, 42600, 42750};
+// Callback function to handle API response data
+size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
+    size_t totalSize = size * nmemb;
+    output->append((char*)contents, totalSize);
+    return totalSize;
 }
 
-// Function to preprocess data (normalization, etc.)
-std::vector<float> preprocess_data(const std::vector<float>& data) {
-    float min_val = *min_element(data.begin(), data.end());
-    float max_val = *max_element(data.begin(), data.end());
-    std::vector<float> normalized;
-    for (float price : data) {
-        normalized.push_back((price - min_val) / (max_val - min_val));
+// Function to fetch crypto data from CryptoCompare API
+std::string fetch_crypto_data(const std::string& symbol, const std::string& currency = "USD") {
+    CURL* curl;
+    CURLcode res;
+    std::string readBuffer;
+
+    std::string url = "https://min-api.cryptocompare.com/data/v2/histoday?fsym=" + symbol + "&tsym=" + currency + "&limit=2000";
+
+    curl = curl_easy_init();
+    if (curl) {
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+        res = curl_easy_perform(curl);
+        curl_easy_cleanup(curl);
     }
-    return normalized;
+
+    if (res != CURLE_OK) {
+        std::cerr << "Failed to fetch data: " << curl_easy_strerror(res) << std::endl;
+        return "";
+    }
+
+    return readBuffer;
 }
 
-// Mock AI model prediction (Replace with TensorFlow inference)
-float predict_price(const std::vector<float>& processed_data) {
-    float sum = 0;
-    for (float val : processed_data) sum += val;
-    return (sum / processed_data.size()) * 1000 + 42000; // Mock prediction formula
+// Function to save data to a CSV file
+void save_to_csv(const std::string& filename, const std::string& data) {
+    std::ofstream file(filename);
+    if (file.is_open()) {
+        file << data;
+        file.close();
+        std::cout << "Data saved to " << filename << std::endl;
+    } else {
+        std::cerr << "Failed to open file." << std::endl;
+    }
 }
 
 int main() {
-    // 1. Fetch crypto data
-    std::vector<float> prices = fetch_crypto_data();
-    
-    // 2. Preprocess data
-    std::vector<float> processed = preprocess_data(prices);
-    
-    // 3. Predict next price
-    float predicted_price = predict_price(processed);
-    
-    // 4. Output prediction
-    std::cout << "[candle=1] [visit=" << predicted_price << "]" << std::endl;
-    
+    std::string symbol;
+    std::cout << "Enter cryptocurrency symbol (e.g., BTC): ";
+    std::cin >> symbol;
+
+    std::string data = fetch_crypto_data(symbol);
+    if (!data.empty()) {
+        save_to_csv(symbol + "_data.csv", data);
+    }
+
     return 0;
 }
