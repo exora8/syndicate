@@ -1,0 +1,2 @@
+g++ crypto_data_fetcher.cpp -o crypto_fetcher -lcurl
+g++ -o AI syndicate.cpp -ltensorflow
