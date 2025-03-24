@@ -13,9 +13,9 @@ size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* out
     return total_size;
 }
 
-// Fetch crypto price data from API
-std::string fetch_crypto_data(const std::string& symbol) {
-    std::string url = "https://min-api.cryptocompare.com/data/price?fsym=" + symbol + "&tsyms=USD";
+// Fetch historical crypto price data from API
+std::string fetch_historical_data(const std::string& symbol) {
+    std::string url = "https://min-api.cryptocompare.com/data/v2/histoday?fsym=" + symbol + "&tsym=USD&limit=2000";
     CURL* curl = curl_easy_init();
     std::string response;
 
@@ -34,13 +34,25 @@ std::string fetch_crypto_data(const std::string& symbol) {
     return response;
 }
 
-// Save price data to CSV file
-void save_to_csv(const std::string& filename, const std::string& symbol, float price) {
-    std::ofstream file(filename, std::ios::app);
+// Save historical price data to CSV file
+void save_historical_to_csv(const std::string& filename, const std::string& symbol, const std::string& data) {
+    std::ofstream file(filename);
     if (file.is_open()) {
-        auto now = std::chrono::system_clock::now();
-        auto time_t_now = std::chrono::system_clock::to_time_t(now);
-        file << symbol << "," << price << "," << std::ctime(&time_t_now);
+        file << "Date,Symbol,Price(USD)\n";
+        size_t pos = 0;
+        while ((pos = data.find("{")) != std::string::npos) {
+            size_t time_pos = data.find("\"time\":", pos);
+            size_t close_pos = data.find("\"close\":", pos);
+            
+            if (time_pos != std::string::npos && close_pos != std::string::npos) {
+                long timestamp = std::stol(data.substr(time_pos + 7, data.find(',', time_pos) - time_pos - 7));
+                float price = std::stof(data.substr(close_pos + 8, data.find(',', close_pos) - close_pos - 8));
+                
+                std::time_t time = timestamp;
+                file << std::ctime(&time) << "," << symbol << "," << price << "\n";
+            }
+            data.erase(0, pos + 1);
+        }
         file.close();
     } else {
         std::cerr << "Failed to open file: " << filename << std::endl;
@@ -51,24 +63,14 @@ int main() {
     std::string symbol;
     std::cout << "Enter cryptocurrency symbol (e.g., BTC): ";
     std::cin >> symbol;
-    
-    std::string filename = symbol + "_data.csv";
-    int interval;
-    std::cout << "Enter fetch interval (seconds): ";
-    std::cin >> interval;
 
-    std::cout << "Fetching data for " << symbol << " every " << interval << " seconds. Press Ctrl+C to stop." << std::endl;
-    
-    while (true) {
-        std::string data = fetch_crypto_data(symbol);
-        if (!data.empty()) {
-            size_t pos = data.find_last_of(':');
-            float price = std::stof(data.substr(pos + 1));
-            std::cout << "Price: " << price << " USD" << std::endl;
-            save_to_csv(filename, symbol, price);
-        }
+    std::string filename = symbol + "_historical_data.csv";
+    std::cout << "Fetching full historical data for " << symbol << "..." << std::endl;
 
-        std::this_thread::sleep_for(std::chrono::seconds(interval));
+    std::string data = fetch_historical_data(symbol);
+    if (!data.empty()) {
+        save_historical_to_csv(filename, symbol, data);
+        std::cout << "Data saved to " << filename << "\n";
     }
 
     return 0;
