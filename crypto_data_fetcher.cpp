@@ -14,8 +14,8 @@ size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* out
 }
 
 // Fetch historical crypto price data from API
-std::string fetch_historical_data(const std::string& symbol, const std::string& timeframe) {
-    std::string url = "https://min-api.cryptocompare.com/data/v2/histo" + timeframe + "?fsym=" + symbol + "&tsym=USD&limit=2000";
+std::string fetch_crypto_data(const std::string& symbol, const std::string& start_date, const std::string& end_date) {
+    std::string url = "https://min-api.cryptocompare.com/data/v2/histoday?fsym=" + symbol + "&tsym=USD&limit=2000&toTs=" + end_date;
     CURL* curl = curl_easy_init();
     std::string response;
 
@@ -34,27 +34,19 @@ std::string fetch_historical_data(const std::string& symbol, const std::string& 
     return response;
 }
 
-// Save price data to CSV file
-void save_to_csv(const std::string& filename, const std::string& symbol, const std::string& data) {
+// Save historical price data to CSV file
+void save_historical_to_csv(const std::string& filename, const std::string& symbol, const std::string& data) {
     std::ofstream file(filename, std::ios::app);
     if (file.is_open()) {
-        file << "time,price" << std::endl;
-        size_t pos = 0;
-        std::string token;
+        size_t time_pos = data.find("time");
+        size_t price_pos = data.find("close");
 
-        while ((pos = data.find("},{")) != std::string::npos) {
-            token = data.substr(0, pos);
-            size_t time_pos = token.find("time":);
-            size_t price_pos = token.find("close":);
-
-            if (time_pos != std::string::npos && price_pos != std::string::npos) {
-                std::string timestamp = token.substr(time_pos + 6, 10);
-                std::string price = token.substr(price_pos + 7, token.find(',', price_pos) - price_pos - 7);
-
-                file << timestamp << "," << price << std::endl;
-            }
-            data.erase(0, pos + 2);
+        if (time_pos != std::string::npos && price_pos != std::string::npos) {
+            std::string clean_data = data;
+            clean_data.erase(0, time_pos + 6);
+            file << symbol << "," << clean_data << std::endl;
         }
+
         file.close();
     } else {
         std::cerr << "Failed to open file: " << filename << std::endl;
@@ -62,20 +54,23 @@ void save_to_csv(const std::string& filename, const std::string& symbol, const s
 }
 
 int main() {
-    std::string symbol, timeframe;
+    std::string symbol;
     std::cout << "Enter cryptocurrency symbol (e.g., BTC): ";
     std::cin >> symbol;
 
-    std::cout << "Enter timeframe (day/hour/minute): ";
-    std::cin >> timeframe;
+    std::string start_date, end_date;
+    std::cout << "Enter start date (timestamp): ";
+    std::cin >> start_date;
+    std::cout << "Enter end date (timestamp): ";
+    std::cin >> end_date;
 
     std::string filename = symbol + "_historical_data.csv";
 
-    std::cout << "Fetching historical data for " << symbol << " with " << timeframe << " timeframe..." << std::endl;
-    
-    std::string data = fetch_historical_data(symbol, timeframe);
+    std::cout << "Fetching historical data for " << symbol << "..." << std::endl;
+
+    std::string data = fetch_crypto_data(symbol, start_date, end_date);
     if (!data.empty()) {
-        save_to_csv(filename, symbol, data);
+        save_historical_to_csv(filename, symbol, data);
         std::cout << "Data saved to " << filename << std::endl;
     }
 
