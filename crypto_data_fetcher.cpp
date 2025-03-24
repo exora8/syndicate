@@ -79,27 +79,40 @@ void save_historical_to_csv(const std::string& filename, const std::string& symb
     std::ofstream file(filename);
     if (file.is_open()) {
         file << "Date,Symbol,Close Price,SMA,EMA,RSI" << std::endl;
-        size_t time_pos = 0, price_pos = 0;
+
         std::vector<double> prices;
 
+        size_t data_start = data.find("[{"), data_end = data.find("}]");
+        if (data_start == std::string::npos || data_end == std::string::npos) {
+            std::cerr << "Error parsing data format!" << std::endl;
+            return;
+        }
+
+        std::string json_data = data.substr(data_start + 1, data_end - data_start);
+        std::istringstream data_stream(json_data);
         std::string line;
-        std::istringstream data_stream(data);
-        while (std::getline(data_stream, line)) {
+
+        while (std::getline(data_stream, line, '{')) {
             size_t time_pos = line.find("\"time\":");
             size_t price_pos = line.find("\"close\":");
 
             if (time_pos != std::string::npos && price_pos != std::string::npos) {
-                long timestamp = std::stol(line.substr(time_pos + 6, line.find(",", time_pos) - time_pos - 6));
-                double price = std::stod(line.substr(price_pos + 8, line.find(",", price_pos) - price_pos - 8));
-                prices.push_back(price);
-                std::string date = timestamp_to_date(timestamp);
+                try {
+                    long timestamp = std::stol(line.substr(time_pos + 7, line.find(',', time_pos) - time_pos - 7));
+                    double price = std::stod(line.substr(price_pos + 8, line.find(',', price_pos) - price_pos - 8));
 
-                int index = prices.size() - 1;
-                double sma = calculate_sma(prices, 14, index);
-                double ema = (index == 0) ? price : calculate_ema(prices, 14, index, prices[index - 1]);
-                double rsi = calculate_rsi(prices, 14, index);
+                    prices.push_back(price);
+                    std::string date = timestamp_to_date(timestamp);
 
-                file << date << "," << symbol << "," << price << "," << sma << "," << ema << "," << rsi << std::endl;
+                    int index = prices.size() - 1;
+                    double sma = calculate_sma(prices, 14, index);
+                    double ema = (index == 0) ? price : calculate_ema(prices, 14, index, prices[index - 1]);
+                    double rsi = calculate_rsi(prices, 14, index);
+
+                    file << date << "," << symbol << "," << price << "," << sma << "," << ema << "," << rsi << std::endl;
+                } catch (const std::exception& e) {
+                    std::cerr << "Parsing error: " << e.what() << "\nLine: " << line << std::endl;
+                }
             }
         }
         file.close();
