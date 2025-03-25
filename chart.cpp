@@ -6,6 +6,7 @@
 #include <sstream>
 #include <unistd.h>
 #include <vector>
+#include <algorithm>
 
 // Fungsi untuk menangani response dari CURL
 size_t WriteCallback(void *contents, size_t size, size_t nmemb, std::string *output) {
