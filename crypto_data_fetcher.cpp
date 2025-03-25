@@ -7,6 +7,7 @@
 #include <ctime>
 #include <iomanip>
 #include <cmath>
+#include <chrono>
 
 // Callback for writing received data
 size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
