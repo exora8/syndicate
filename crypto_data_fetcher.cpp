@@ -15,8 +15,8 @@ size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* out
     return total_size;
 }
 
-// Convert timestamp to readable date and time
-std::string timestamp_to_datetime(long timestamp) {
+// Convert timestamp to readable date
+std::string timestamp_to_date(long timestamp) {
     std::time_t t = timestamp;
     std::tm* tm_ptr = std::localtime(&t);
     std::ostringstream oss;
@@ -26,7 +26,7 @@ std::string timestamp_to_datetime(long timestamp) {
 
 // Fetch historical crypto price data from API
 std::string fetch_crypto_data(const std::string& symbol, long to_timestamp) {
-    std::string url = "https://min-api.cryptocompare.com/data/v2/histominute?fsym=" + symbol + "&tsym=USD&limit=2000&toTs=" + std::to_string(to_timestamp) + "&aggregate=15";
+    std::string url = "https://min-api.cryptocompare.com/data/v2/histominute?fsym=" + symbol + "&tsym=USD&limit=2000&toTs=" + std::to_string(to_timestamp);
     CURL* curl = curl_easy_init();
     std::string response;
 
@@ -51,7 +51,7 @@ std::vector<std::pair<long, double>> parse_price_data(const std::string& data) {
     size_t time_pos = 0, price_pos = 0;
     std::string line;
     std::istringstream data_stream(data);
-    
+
     while (std::getline(data_stream, line)) {
         size_t time_pos = line.find("\"time\":");
         size_t price_pos = line.find("\"close\":");
@@ -69,9 +69,9 @@ std::vector<std::pair<long, double>> parse_price_data(const std::string& data) {
 void save_historical_to_csv(const std::string& filename, const std::string& symbol, const std::vector<std::pair<long, double>>& prices) {
     std::ofstream file(filename);
     if (file.is_open()) {
-        file << "DateTime,Symbol,Close Price" << std::endl;
+        file << "Date,Symbol,Close Price" << std::endl;
         for (const auto& [timestamp, price] : prices) {
-            file << timestamp_to_datetime(timestamp) << "," << symbol << "," << price << std::endl;
+            file << timestamp_to_date(timestamp) << "," << symbol << "," << price << std::endl;
         }
         file.close();
         std::cout << "Data saved to " << filename << std::endl;
@@ -80,18 +80,37 @@ void save_historical_to_csv(const std::string& filename, const std::string& symb
     }
 }
 
+// Display progress bar
+void show_progress(int current, int total, double elapsed_time) {
+    int width = 50; // Progress bar width
+    float progress = (float)current / total;
+    int pos = width * progress;
+
+    std::cout << "[";
+    for (int i = 0; i < width; ++i) {
+        if (i < pos) std::cout << "=";
+        else if (i == pos) std::cout << ">";
+        else std::cout << " ";
+    }
+    double remaining_time = (elapsed_time / current) * (total - current);
+    std::cout << "] " << int(progress * 100.0) << "% | ETA: " << std::fixed << std::setprecision(1) << remaining_time << "s\r";
+    std::cout.flush();
+}
+
 int main() {
     std::string symbol;
     std::cout << "Enter cryptocurrency symbol (e.g., BTC): ";
     std::cin >> symbol;
-    std::string filename = symbol + "_15min_historical_data.csv";
+    std::string filename = symbol + "_shortterm_data.csv";
     std::vector<std::pair<long, double>> all_prices;
     long to_timestamp = std::time(nullptr);
-
-    std::cout << "Fetching 15-minute interval data for " << symbol << "..." << std::endl;
-
     int batch = 0;
-    while (true) {
+    int max_batches = 20;
+    auto start_time = std::chrono::steady_clock::now();
+
+    std::cout << "Fetching short-term data for " << symbol << "..." << std::endl;
+
+    while (batch < max_batches) {
         std::string data = fetch_crypto_data(symbol, to_timestamp);
         if (data.empty()) break;
 
@@ -99,11 +118,12 @@ int main() {
         if (prices.empty()) break;
 
         all_prices.insert(all_prices.end(), prices.begin(), prices.end());
-        to_timestamp = prices.back().first - 1; // Move timestamp back to fetch older data
+        to_timestamp = prices.back().first - 1;
         batch++;
-        std::cout << "Batch " << batch << " completed. Total data points: " << all_prices.size() << std::endl;
 
-        if (all_prices.size() >= 10000) break;  // Stop if data exceeds 10,000 points
+        auto current_time = std::chrono::steady_clock::now();
+        double elapsed_time = std::chrono::duration<double>(current_time - start_time).count();
+        show_progress(batch, max_batches, elapsed_time);
     }
 
     if (!all_prices.empty()) {
@@ -112,5 +132,6 @@ int main() {
         std::cerr << "No data fetched for " << symbol << std::endl;
     }
 
+    std::cout << "\nFetch complete!" << std::endl;
     return 0;
 }
