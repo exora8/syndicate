@@ -6,6 +6,7 @@
 #include <curl/curl.h>
 #include <ctime>
 #include <iomanip>
+#include <cmath>
 
 // Callback for writing received data
 size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
@@ -14,18 +15,18 @@ size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* out
     return total_size;
 }
 
-// Convert timestamp to readable date
-std::string timestamp_to_date(long timestamp) {
+// Convert timestamp to readable date and time
+std::string timestamp_to_datetime(long timestamp) {
     std::time_t t = timestamp;
     std::tm* tm_ptr = std::localtime(&t);
     std::ostringstream oss;
-    oss << std::put_time(tm_ptr, "%Y-%m-%d");
+    oss << std::put_time(tm_ptr, "%Y-%m-%d %H:%M");
     return oss.str();
 }
 
 // Fetch historical crypto price data from API
 std::string fetch_crypto_data(const std::string& symbol, long to_timestamp) {
-    std::string url = "https://min-api.cryptocompare.com/data/v2/histoday?fsym=" + symbol + "&tsym=USD&limit=2000&toTs=" + std::to_string(to_timestamp) + "&aggregate=7";
+    std::string url = "https://min-api.cryptocompare.com/data/v2/histominute?fsym=" + symbol + "&tsym=USD&limit=2000&toTs=" + std::to_string(to_timestamp) + "&aggregate=15";
     CURL* curl = curl_easy_init();
     std::string response;
 
@@ -68,9 +69,9 @@ std::vector<std::pair<long, double>> parse_price_data(const std::string& data) {
 void save_historical_to_csv(const std::string& filename, const std::string& symbol, const std::vector<std::pair<long, double>>& prices) {
     std::ofstream file(filename);
     if (file.is_open()) {
-        file << "Date,Symbol,Close Price" << std::endl;
+        file << "DateTime,Symbol,Close Price" << std::endl;
         for (const auto& [timestamp, price] : prices) {
-            file << timestamp_to_date(timestamp) << "," << symbol << "," << price << std::endl;
+            file << timestamp_to_datetime(timestamp) << "," << symbol << "," << price << std::endl;
         }
         file.close();
         std::cout << "Data saved to " << filename << std::endl;
@@ -83,15 +84,14 @@ int main() {
     std::string symbol;
     std::cout << "Enter cryptocurrency symbol (e.g., BTC): ";
     std::cin >> symbol;
-    std::string filename = symbol + "_weekly_historical_data.csv";
+    std::string filename = symbol + "_15min_historical_data.csv";
     std::vector<std::pair<long, double>> all_prices;
     long to_timestamp = std::time(nullptr);
 
-    std::cout << "Fetching weekly historical data for " << symbol << "..." << std::endl;
+    std::cout << "Fetching 15-minute interval data for " << symbol << "..." << std::endl;
 
-    int batch = 1;
+    int batch = 0;
     while (true) {
-        std::cout << "Fetching batch " << batch << "..." << std::endl;
         std::string data = fetch_crypto_data(symbol, to_timestamp);
         if (data.empty()) break;
 
@@ -101,6 +101,9 @@ int main() {
         all_prices.insert(all_prices.end(), prices.begin(), prices.end());
         to_timestamp = prices.back().first - 1; // Move timestamp back to fetch older data
         batch++;
+        std::cout << "Batch " << batch << " completed. Total data points: " << all_prices.size() << std::endl;
+
+        if (all_prices.size() >= 10000) break;  // Stop if data exceeds 10,000 points
     }
 
     if (!all_prices.empty()) {
