@@ -1,76 +1,88 @@
 #include <iostream>
-#include <vector>
-#include <string>
 #include <ncurses.h>
-#include <cpr/cpr.h>
-#include <nlohmann/json.hpp>
+#include <vector>
+#include <curl/curl.h>
+#include <json/json.h>
+#include <unistd.h>
 
-using json = nlohmann::json;
+using namespace std;
 
-std::string fetchCryptoPrice(const std::string& symbol) {
-    std::string url = "https://min-api.cryptocompare.com/data/price?fsym=" + symbol + "&tsyms=USD";
-    auto response = cpr::Get(cpr::Url{url});
-    if (response.status_code == 200) {
-        auto jsonData = json::parse(response.text);
-        return "$" + std::to_string(jsonData["USD"]);
-    } else {
-        return "Error fetching price";
+// Function to fetch price data from CryptoCompare
+string fetch_price(const string& symbol) {
+    CURL* curl;
+    CURLcode res;
+    string readBuffer;
+
+    curl = curl_easy_init();
+    if (curl) {
+        string url = "https://min-api.cryptocompare.com/data/price?fsym=" + symbol + "&tsyms=USD";
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, [](char* ptr, size_t size, size_t nmemb, string* data) -> size_t {
+            data->append(ptr, size * nmemb);
+            return size * nmemb;
+        });
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+        res = curl_easy_perform(curl);
+        curl_easy_cleanup(curl);
     }
+
+    Json::Value jsonData;
+    Json::CharReaderBuilder reader;
+    string errs;
+    if (Json::parseFromStream(reader, readBuffer, &jsonData, &errs)) {
+        return jsonData["USD"].asString();
+    }
+    return "0";
 }
 
-void displayMenu(const std::vector<std::string>& cryptos) {
-    int choice = 0;
-    int ch;
+// Function to draw a basic price chart
+void draw_chart(const vector<int>& prices) {
+    clear();
+    int max_height = LINES - 5;
+    int max_width = COLS - 5;
 
-    initscr();
-    cbreak();
-    noecho();
-    keypad(stdscr, TRUE);
-
-    while (true) {
-        clear();
-        mvprintw(0, 10, "Crypto CLI Dashboard");
-
-        for (int i = 0; i < cryptos.size(); ++i) {
-            if (i == choice) {
-                attron(A_REVERSE);
-            }
-            mvprintw(i + 2, 5, cryptos[i].c_str());
-            if (i == choice) {
-                attroff(A_REVERSE);
-            }
-        }
-
-        mvprintw(cryptos.size() + 4, 5, "Use arrow keys to navigate. Press Enter to select.");
-        ch = getch();
-
-        switch (ch) {
-            case KEY_UP:
-                choice = (choice == 0) ? cryptos.size() - 1 : choice - 1;
-                break;
-            case KEY_DOWN:
-                choice = (choice == cryptos.size() - 1) ? 0 : choice + 1;
-                break;
-            case 10: // Enter key
-                clear();
-                mvprintw(0, 10, ("Fetching " + cryptos[choice] + " price...").c_str());
-                std::string price = fetchCryptoPrice(cryptos[choice]);
-                mvprintw(2, 10, (cryptos[choice] + " price: " + price).c_str());
-                mvprintw(4, 10, "Press any key to go back.");
-                getch();
-                break;
-            default:
-                break;
-        }
-
-        if (ch == 'q') break;
+    for (int i = 0; i < max_width; ++i) {
+        mvprintw(max_height, i, "-");
     }
 
-    endwin();
+    for (size_t i = 0; i < prices.size() && i < (size_t)max_width; ++i) {
+        int y_pos = max_height - (prices[i] * max_height / 100);
+        mvprintw(y_pos, i, "#");
+    }
+
+    mvprintw(LINES - 2, 0, "[1] Settings  [2] WiFi  [3] Chart  [Q] Quit");
+    refresh();
 }
 
 int main() {
-    std::vector<std::string> cryptos = {"BTC", "ETH", "XRP", "DOGE", "ADA"};
-    displayMenu(cryptos);
+    initscr();
+    noecho();
+    curs_set(0);
+
+    vector<int> prices;
+
+    while (true) {
+        string price_str = fetch_price("BTC");
+        int price = stoi(price_str) / 100;
+        prices.push_back(price);
+        if (prices.size() > COLS - 5) prices.erase(prices.begin());
+
+        draw_chart(prices);
+        char ch = getch();
+
+        if (ch == 'q' || ch == 'Q') {
+            break;
+        } else if (ch == '1') {
+            mvprintw(LINES - 4, 0, "[Settings Menu] - Coming soon...");
+        } else if (ch == '2') {
+            mvprintw(LINES - 4, 0, "[WiFi Menu] - Coming soon...");
+        } else if (ch == '3') {
+            mvprintw(LINES - 4, 0, "[Chart Menu] - Coming soon...");
+        }
+        refresh();
+        sleep(15);
+    }
+
+    endwin();
     return 0;
 }
