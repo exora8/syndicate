@@ -6,7 +6,6 @@
 #include <curl/curl.h>
 #include <ctime>
 #include <iomanip>
-#include <cmath>
 
 // Callback for writing received data
 size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
@@ -49,18 +48,24 @@ std::string fetch_crypto_data(const std::string& symbol, long to_timestamp) {
 std::vector<std::pair<long, double>> parse_price_data(const std::string& data) {
     std::vector<std::pair<long, double>> prices;
     size_t time_pos = 0, price_pos = 0;
+    size_t time_start, time_end, price_start, price_end;
+
     std::string line;
     std::istringstream data_stream(data);
-    
-    while (std::getline(data_stream, line)) {
-        size_t time_pos = line.find("\"time\":");
-        size_t price_pos = line.find("\"close\":");
 
-        if (time_pos != std::string::npos && price_pos != std::string::npos) {
-            long timestamp = std::stol(line.substr(time_pos + 7, line.find(",", time_pos) - time_pos - 7));
-            double price = std::stod(line.substr(price_pos + 8, line.find(",", price_pos) - price_pos - 8));
-            prices.emplace_back(timestamp, price);
-        }
+    while ((time_start = data.find("\"time\":", time_pos)) != std::string::npos &&
+           (price_start = data.find("\"close\":", price_pos)) != std::string::npos) {
+
+        time_end = data.find(",", time_start);
+        price_end = data.find(",", price_start);
+
+        long timestamp = std::stol(data.substr(time_start + 7, time_end - time_start - 7));
+        double price = std::stod(data.substr(price_start + 8, price_end - price_start - 8));
+
+        prices.emplace_back(timestamp, price);
+
+        time_pos = time_end;
+        price_pos = price_end;
     }
     return prices;
 }
@@ -98,11 +103,9 @@ int main() {
         if (prices.empty()) break;
 
         all_prices.insert(all_prices.end(), prices.begin(), prices.end());
+        to_timestamp = prices.front().first - 1; // Move timestamp back to fetch older data
 
-        // Stop when we reach the first data point
-        if (prices.size() < 2000) break;
-
-        to_timestamp = prices.back().first - 1; // Move timestamp back to fetch older data
+        if (prices.size() < 2000) break; // Stop if less than max limit (2000) fetched
     }
 
     if (!all_prices.empty()) {
