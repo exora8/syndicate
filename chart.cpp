@@ -1,55 +1,76 @@
 #include <iostream>
 #include <vector>
+#include <string>
 #include <ncurses.h>
-#include <unistd.h>
+#include <cpr/cpr.h>
+#include <nlohmann/json.hpp>
 
-using namespace std;
+using json = nlohmann::json;
 
-struct Candle {
-    double open, high, low, close;
-};
+std::string fetchCryptoPrice(const std::string& symbol) {
+    std::string url = "https://min-api.cryptocompare.com/data/price?fsym=" + symbol + "&tsyms=USD";
+    auto response = cpr::Get(cpr::Url{url});
+    if (response.status_code == 200) {
+        auto jsonData = json::parse(response.text);
+        return "$" + std::to_string(jsonData["USD"]);
+    } else {
+        return "Error fetching price";
+    }
+}
 
-void drawCandle(int x, int y, Candle candle) {
-    int bodyTop = max(candle.open, candle.close);
-    int bodyBottom = min(candle.open, candle.close);
-    attron(COLOR_PAIR(candle.close >= candle.open ? 1 : 2));
+void displayMenu(const std::vector<std::string>& cryptos) {
+    int choice = 0;
+    int ch;
 
-    // Draw wick
-    for (int i = candle.high; i > bodyTop; --i) mvprintw(y - i, x, "|");
-    for (int i = bodyBottom - 1; i > candle.low; --i) mvprintw(y - i, x, "|");
-    
-    // Draw body
-    for (int i = bodyBottom; i <= bodyTop; ++i) mvprintw(y - i, x, "█");
-    
-    attroff(COLOR_PAIR(candle.close >= candle.open ? 1 : 2));
+    initscr();
+    cbreak();
+    noecho();
+    keypad(stdscr, TRUE);
+
+    while (true) {
+        clear();
+        mvprintw(0, 10, "Crypto CLI Dashboard");
+
+        for (int i = 0; i < cryptos.size(); ++i) {
+            if (i == choice) {
+                attron(A_REVERSE);
+            }
+            mvprintw(i + 2, 5, cryptos[i].c_str());
+            if (i == choice) {
+                attroff(A_REVERSE);
+            }
+        }
+
+        mvprintw(cryptos.size() + 4, 5, "Use arrow keys to navigate. Press Enter to select.");
+        ch = getch();
+
+        switch (ch) {
+            case KEY_UP:
+                choice = (choice == 0) ? cryptos.size() - 1 : choice - 1;
+                break;
+            case KEY_DOWN:
+                choice = (choice == cryptos.size() - 1) ? 0 : choice + 1;
+                break;
+            case 10: // Enter key
+                clear();
+                mvprintw(0, 10, ("Fetching " + cryptos[choice] + " price...").c_str());
+                std::string price = fetchCryptoPrice(cryptos[choice]);
+                mvprintw(2, 10, (cryptos[choice] + " price: " + price).c_str());
+                mvprintw(4, 10, "Press any key to go back.");
+                getch();
+                break;
+            default:
+                break;
+        }
+
+        if (ch == 'q') break;
+    }
+
+    endwin();
 }
 
 int main() {
-    vector<Candle> candles = {
-        {100, 110, 95, 105}, {105, 120, 102, 115}, {115, 118, 108, 112},
-        {112, 125, 110, 120}, {120, 130, 115, 125}, {125, 128, 122, 123}
-    };
-
-    initscr();
-    start_color();
-    init_pair(1, COLOR_GREEN, COLOR_BLACK);
-    init_pair(2, COLOR_RED, COLOR_BLACK);
-    curs_set(0);
-
-    int height, width;
-    getmaxyx(stdscr, height, width);
-
-    mvprintw(0, width / 2 - 10, "Crypto CLI Chart");
-    mvprintw(height - 1, 0, "[Q] Quit");
-
-    int xOffset = 5;
-    for (size_t i = 0; i < candles.size(); ++i) {
-        drawCandle(xOffset + i * 5, height / 2, candles[i]);
-    }
-
-    refresh();
-    while (getch() != 'q');
-
-    endwin();
+    std::vector<std::string> cryptos = {"BTC", "ETH", "XRP", "DOGE", "ADA"};
+    displayMenu(cryptos);
     return 0;
 }
