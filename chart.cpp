@@ -1,88 +1,76 @@
 #include <iostream>
+#include <string>
 #include <ncurses.h>
-#include <vector>
 #include <curl/curl.h>
 #include <json/json.h>
-#include <unistd.h>
+#include <sstream>
 
-using namespace std;
+// Fungsi untuk menangani response dari CURL
+size_t WriteCallback(void *contents, size_t size, size_t nmemb, std::string *output) {
+    size_t totalSize = size * nmemb;
+    output->append((char *)contents, totalSize);
+    return totalSize;
+}
 
-// Function to fetch price data from CryptoCompare
-string fetch_price(const string& symbol) {
-    CURL* curl;
+// Fungsi fetch harga dari CryptoCompare
+std::string fetch_price(const std::string &crypto) {
+    std::string url = "https://min-api.cryptocompare.com/data/price?fsym=" + crypto + "&tsyms=USD";
+    CURL *curl;
     CURLcode res;
-    string readBuffer;
+    std::string readBuffer;
 
     curl = curl_easy_init();
     if (curl) {
-        string url = "https://min-api.cryptocompare.com/data/price?fsym=" + symbol + "&tsyms=USD";
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, [](char* ptr, size_t size, size_t nmemb, string* data) -> size_t {
-            data->append(ptr, size * nmemb);
-            return size * nmemb;
-        });
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
         res = curl_easy_perform(curl);
         curl_easy_cleanup(curl);
-    }
 
-    Json::Value jsonData;
-    Json::CharReaderBuilder reader;
-    string errs;
-    if (Json::parseFromStream(reader, readBuffer, &jsonData, &errs)) {
-        return jsonData["USD"].asString();
+        if (res != CURLE_OK) {
+            return "Error fetching data";
+        }
+
+        Json::Value jsonData;
+        Json::CharReaderBuilder reader;
+        std::string errs;
+        std::istringstream jsonStream(readBuffer);
+        if (Json::parseFromStream(reader, jsonStream, &jsonData, &errs)) {
+            return jsonData["USD"].asString();
+        }
     }
-    return "0";
+    return "Error parsing data";
 }
 
-// Function to draw a basic price chart
-void draw_chart(const vector<int>& prices) {
-    clear();
-    int max_height = LINES - 5;
-    int max_width = COLS - 5;
+// Fungsi untuk menampilkan UI CLI
+void display_chart(const std::string &crypto) {
+    initscr();
+    cbreak();
+    noecho();
+    nodelay(stdscr, TRUE);
+    curs_set(0);
 
-    for (int i = 0; i < max_width; ++i) {
-        mvprintw(max_height, i, "-");
+    while (true) {
+        clear();
+        std::string price = fetch_price(crypto);
+        mvprintw(0, 0, "Crypto Market CLI Tool");
+        mvprintw(2, 0, ("Crypto: " + crypto).c_str());
+        mvprintw(3, 0, ("Price (USD): " + price).c_str());
+        mvprintw(5, 0, "Press 'q' to quit.");
+
+        refresh();
+        if (getch() == 'q') break;
+
+        sleep(15);
     }
-
-    for (size_t i = 0; i < prices.size() && i < (size_t)max_width; ++i) {
-        int y_pos = max_height - (prices[i] * max_height / 100);
-        mvprintw(y_pos, i, "#");
-    }
-
-    mvprintw(LINES - 2, 0, "[1] Settings  [2] WiFi  [3] Chart  [Q] Quit");
-    refresh();
+    endwin();
 }
 
 int main() {
-    initscr();
-    noecho();
-    curs_set(0);
+    std::string crypto;
+    std::cout << "Enter cryptocurrency symbol (e.g., BTC): ";
+    std::cin >> crypto;
+    display_chart(crypto);
 
-    vector<int> prices;
-
-    while (true) {
-        string price_str = fetch_price("BTC");
-        int price = stoi(price_str) / 100;
-        prices.push_back(price);
-        if (prices.size() > COLS - 5) prices.erase(prices.begin());
-
-        draw_chart(prices);
-        char ch = getch();
-
-        if (ch == 'q' || ch == 'Q') {
-            break;
-        } else if (ch == '1') {
-            mvprintw(LINES - 4, 0, "[Settings Menu] - Coming soon...");
-        } else if (ch == '2') {
-            mvprintw(LINES - 4, 0, "[WiFi Menu] - Coming soon...");
-        } else if (ch == '3') {
-            mvprintw(LINES - 4, 0, "[Chart Menu] - Coming soon...");
-        }
-        refresh();
-        sleep(15);
-    }
-
-    endwin();
     return 0;
 }
