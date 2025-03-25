@@ -4,6 +4,7 @@
 #include <curl/curl.h>
 #include <json/json.h>
 #include <sstream>
+#include <unistd.h>
 
 // Fungsi untuk menangani response dari CURL
 size_t WriteCallback(void *contents, size_t size, size_t nmemb, std::string *output) {
